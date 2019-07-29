@@ -1,0 +1,20 @@
+{
+	"name": "@getify/revocable-queue",
+	"description": "Specialized async queue data structure",
+	"version": "1.0.0",
+	"main": "index.js",
+	"scripts": {
+		"test": "node test.js"
+	},
+	"repository": "getify/revocable-queue",
+	"keywords": [
+		"streams"
+	],
+	"bugs": {
+		"url": "https://github.com/getify/revocable-queue/issues",
+		"email": "getify@gmail.com"
+	},
+	"homepage": "https://github.com/getify/revocable-queue",
+	"author": "Kyle Simpson <getify@gmail.com>",
+	"license": "MIT"
+}

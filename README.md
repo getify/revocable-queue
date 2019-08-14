@@ -6,13 +6,7 @@
 
 Revocable Queue allows you to read/write a sequence of data values (aka, a queue) asynchronously, similar to streams or observables. But any data/event that is still pending in the queue -- hasn't yet been read -- can be revoked.
 
-To install and use in Node:
-
-```cmd
-npm install @getify/revocable-queue
-```
-
-**Note:** This library uses ES2018 features so it requires Node 12+.
+Some helpers are included to make working with revocable queues easier for some common use-cases, including [`lazyZip(..)`](#lazyzip) and [`eventState(..)`](#eventstate).
 
 ## API
 
@@ -91,7 +85,7 @@ pr.then(function t(get){
 });
 ```
 
-**Note:** The read function (name `get()` here) is only resolved if there's a value ready at the moment. However, it' *possible* (but rare!) that between that moment and when `get()` is called, the value has already been revoked. For this reason, it's recommended to call `get()` as soon as it's received, to significantly reduce the chances of such a race condition. For robustness, always perform the `if` check as illustrated above. If the `get()` call returns `RevocableQueue.EMPTY`, the value was already revoked, and that `get()` function should now be discarded. Call `next()` on the queue again to get a promise for the next `get()` read function.
+**Note:** The read function (named `get()` here) is only resolved if there's a value ready at the moment. However, it' *possible* (but rare!) that between that moment and when `get()` is called, the value has already been revoked. For this reason, it's recommended to call `get()` as soon as it's received, to significantly reduce the chances of such a race condition. For robustness, always perform the `if` check as illustrated above. If the `get()` call returns `RevocableQueue.EMPTY`, the value was already revoked, and that `get()` function should now be discarded. Call `next()` on the queue again to get a promise for the next `get()` read function.
 
 ### Peeking
 
@@ -113,11 +107,11 @@ if (
 }
 ```
 
-In this above snippet, the not-so-obvious race condition is that `get1()` may have been resolved signficantly before (or after) `get2()`, so by that time, either value may have been revoked. The `if` statment peeks through each queue's ready-to-read accessor function to ensure the value is indeed *still* ready.
+In this above snippet, the not-so-obvious race condition is that `get1` may have been resolved signficantly before (or after) `get2`, so by that time, either underlying value may have been revoked. The `if` statment peeks through each queue's ready-to-read accessor function to ensure the value is indeed *still* ready.
 
 **Note:** There is no race condition between the `get1(false)` and the `get1()` call (or the `get2(..)` calls), because JavaScript is single-threaded. So as long as this code pattern is followed, where the peeking and the reading happen synchronously (no promise/`await` deferral in between!), it's perfectly safe to assume that the peeked value is still ready to read in the next statement. Even if some other code was trying to revoke that value at that exact moment, it would be waiting for this code to finish, and since it's fully read/taken, the revoking would fail.
 
-This synchronizing of lazy asynchronous reads from multiple queues is an expected common use-case for **RevocableQueue**. As such, the [`lazyZip(..)`](#lazy-zip) helper utility is also provided.
+This synchronizing of lazy asynchronous reads from multiple queues is an expected common use-case for **RevocableQueue**. As such, the [`lazyZip(..)`](#lazyzip) helper utility is also provided.
 
 ### Example
 
@@ -231,6 +225,99 @@ Here's how to consume that queue using `lazyZip(..)`:
 ```
 
 That approach is probably much cleaner in most cases!
+
+### `eventState(..)`
+
+Another use-case for revocable queues and `lazyZip(..)` is listening for alternating events to fire that represent a toggling of a state (between `true` and `false`). The concern is not receiving specific values from these events (as illustrated previously with `lazyZip(..)`), but rather just listening for a signal that all of the activation events for a set of two or more listeners has fired, and that no corresponding deactivation events occured while waiting.
+
+For example: managing a series of network socket connections which fire `"connected"` and `"disconnected"` events, and synchronizing operations to occur only when all the connections are active/connected at the same time.
+
+For this kind of event/state synchronization use case, `eventState(..)` is provided, which wraps `lazyZip(..)` and subscribes to events on `EventEmitter` compatible objects (ie, `.on(..)` for subscribing and `.off(..)` for unsubscribing).
+
+To use `eventState(..)`, pass it an array of two or more objects. Each object should have at a minimum a `listener` property with the `EventEmitter` instance, as well as an `onEvent` property with the name of the activation event to listen for.
+
+Optionally, each of these objects can include an `offEvent` property to name a deactivation event to listen for, and a `status` property (boolean, default: `false`) to initialize the status for each listener:
+
+```js
+async function greetings(conn1,conn2,conn3) {
+    await RevocableQueue.eventState([
+        {
+            listener: conn1,
+            onEvent: "connected",
+            offEvent: "disconnected",
+            status: conn1.isConnected
+        },
+        {
+            listener: conn2,
+            onEvent: "connected",
+            offEvent: "disconnected",
+            status: conn2.isConnected
+        },
+        {
+            listener: conn3,
+            onEvent: "connected",
+            offEvent: "disconnected",
+            status: conn3.isConnected
+        }
+    ]);
+
+    broadcastMessage( [conn1,conn2,conn3], "greetings!" );
+}
+```
+
+This code asserts that the three network socket connection objects (`conn1`, `conn2`, and `conn3`) all emit `"connected"` and `"disconnected"` events, as well as have an `isConnected` boolean property that's `true` when connected or `false` when not. The moment all 3 connections are established simultaneously, the `await` expression will complete and then the `broadcastMessage(..)` operation will be performed.
+
+## Builds
+
+[![npm Module](https://badge.fury.io/js/%40getify%2Frevocable-queue.svg)](https://www.npmjs.org/package/@getify/revocable-queue)
+
+The distribution library file (`dist/rq.js`) comes pre-built with the npm package distribution, so you shouldn't need to rebuild it under normal circumstances.
+
+However, if you download this repository via Git:
+
+1. The included build utility (`build-core.js`) builds (and minifies) `dist/rq.js` from source. **The build utility expects Node.js version 6+.**
+
+2. To install the build and test dependencies, run `npm install` from the project root directory.
+
+    - **Note:** This `npm install` has the effect of running the build for you, so no further action should be needed on your part.
+
+3. To manually run the build utility with npm:
+
+    ```
+    npm run build
+    ```
+
+4. To run the build utility directly without npm:
+
+    ```
+    node build-core.js
+    ```
+
+## Tests
+
+A test suite is included in this repository, as well as the npm package distribution. The default test behavior runs the test suite using `index.js`.
+
+1. The included Node.js test utility (`node-tests.js`) runs the test suite. **This test utility expects Node.js version 6+.**
+
+2. To run the test utility with npm:
+
+    ```
+    npm test
+    ```
+
+    Other npm test scripts:
+
+    * `npm run test:dist` will run the test suite against `dist/rq.js` instead of the default of `index.js`.
+
+    * `npm run test:package` will run the test suite as if the package had just been installed via npm. This ensures `package.json`:`main` properly references `dist/rq.js` for inclusion.
+
+    * `npm run test:all` will run all three modes of the test suite.
+
+3. To run the test utility directly without npm:
+
+    ```
+    node node-tests.js
+    ```
 
 ## License
 

@@ -4,7 +4,7 @@
 [![Dependencies](https://david-dm.org/getify/revocable-queue.svg)](https://david-dm.org/getify/revocable-queue)
 [![devDependencies](https://david-dm.org/getify/revocable-queue/dev-status.svg)](https://david-dm.org/getify/revocable-queue?type=dev)
 
-Revocable Queue allows you to read/write a sequence of data values (aka, a queue) asynchronously, similar to streams or observables. But any data/event that is still pending in the queue -- hasn't yet been read -- can be revoked.
+**Revocable Queue** allows you to read/write a sequence of data values (aka, a queue) asynchronously, similar to streams or observables. But any data/event that is still pending in the queue -- hasn't yet been read -- can be revoked.
 
 Some helpers are included to make working with revocable queues easier for some common use-cases, including [`lazyZip(..)`](#lazyzip) and [`eventState(..)`](#eventstate).
 
@@ -232,9 +232,11 @@ Another use-case for revocable queues and `lazyZip(..)` is listening for alterna
 
 For example: managing a series of network socket connections which fire `"connected"` and `"disconnected"` events, and synchronizing operations to occur only when all the connections are active/connected at the same time.
 
-For this kind of event/state synchronization use case, `eventState(..)` is provided, which wraps `lazyZip(..)` and subscribes to events on `EventEmitter` compatible objects (ie, `.on(..)` for subscribing and `.off(..)` for unsubscribing).
+For this kind of event/state synchronization use case, `eventState(..)` is provided, which wraps `lazyZip(..)` and subscribes to events on `EventEmitter`-compatible event emitter instances (ie, `.on(..)` for subscribing and `.off(..)` for unsubscribing).
 
-To use `eventState(..)`, pass it an array of two or more objects. Each object should have at a minimum a `listener` property with the `EventEmitter` instance, as well as an `onEvent` property with the name of the activation event to listen for.
+**Note:** `eventState(..)` will typically be used with full event emitter instances (from streams, network sockets, etc). But if you need to create event emitters directly, see [`EventEmitter()`](#eventemitter) below.
+
+To use `eventState(..)`, pass it an array of two or more objects. Each object should have at a minimum a `listener` property with the event emitter instance, as well as an `onEvent` property with the name of the activation event to listen for.
 
 Optionally, each of these objects can include an `offEvent` property to name a deactivation event to listen for, and a `status` property (boolean, default: `false`) to initialize the status for each listener:
 
@@ -266,6 +268,34 @@ async function greetings(conn1,conn2,conn3) {
 ```
 
 This code asserts that the three network socket connection objects (`conn1`, `conn2`, and `conn3`) all emit `"connected"` and `"disconnected"` events, as well as have an `isConnected` boolean property that's `true` when connected or `false` when not. The moment all 3 connections are established simultaneously, the `await` expression will complete and then the `broadcastMessage(..)` operation will be performed.
+
+#### `EventEmitter`
+
+`RevocableQueue.EventEmitter()` is an included utility to create simple event emitter instances:
+
+```js
+var listener = new RevocableQueue.EventEmitter();
+
+listener.on("greeting",function onHello(msg){
+    console.log(`Hello, ${msg}!`);
+});
+
+listener.emit("greeting","Kyle");
+// Hello, Kyle!
+```
+
+`RevocableQueue.EventEmitter()` is a stripped-down implementation of a synchronous event emitter, with a generally compatible subset of the [Node.js `EventEmitter()`](https://nodejs.org/api/events.html) API.
+
+**Note:** Only use if your code's environment doesn't already provide a suitable event emitter utility.
+
+`RevocableQueue.EventEmitter()` instances have the following methods:
+
+  - `emit(eventName,...data)`
+  - `on(eventName,handler)`
+  - `once(eventName,handler)`
+  - `removeListener(eventName,handler)`
+  - `off(eventName,handler)`
+  - `removeAllListeners(eventName)` (note: `eventName` is optional)
 
 ## Builds
 

@@ -34,6 +34,12 @@
 			}
 			return this;
 		}
+		removeAllListeners(evtName) {
+			var evtNames = (evtName !== undefined) ? [evtName,] : Object.keys(this.listeners);
+			for (let name of evtNames) {
+				this.listeners[name].clear();
+			}
+		}
 		off(...args) {
 			return this.removeListener(...args);
 		}

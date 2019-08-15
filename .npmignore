@@ -1,5 +1,6 @@
 .npmrc
 .npmignore
 .gitignore
+.github/
 node_modules/
 dist/

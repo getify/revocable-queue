@@ -238,11 +238,13 @@ For this kind of event/state synchronization use case, `eventState(..)` is provi
 
 To use `eventState(..)`, pass it an array of two or more objects. Each object should have at a minimum a `listener` property with the event emitter instance, as well as an `onEvent` property with the name of the activation event to listen for (or an array of event names).
 
-Optionally, each of these objects can include an `offEvent` property to name a deactivation event (or array of event names) to listen for, and a `status` property (boolean, default: `false`) to initialize the status for each listener:
+Optionally, each of these objects can include an `offEvent` property to name a deactivation event (or array of event names) to listen for, and a `status` property (boolean, default: `false`) to initialize the status for each listener.
+
+The return value from `eventState(..)` is a controller object, which has two properties: `wait` is the promise that will resolve when the event-state synchronization has completed, and `cancel()` which will cancel the processing (including cleaning up all event handlers) and cause the `wait` promise to be rejected.
 
 ```js
 async function greetings(conn1,conn2,conn3) {
-    await RevocableQueue.eventState([
+    var controller = RevocableQueue.eventState([
         {
             listener: conn1,
             onEvent: [ "connected", "reconnected", ],
@@ -263,11 +265,22 @@ async function greetings(conn1,conn2,conn3) {
         }
     ]);
 
-    broadcastMessage( [conn1,conn2,conn3], "greetings!" );
+    // listen for an "abandon" event to cancel the event-state processing
+    conn1.on("abandon",controller.cancel);
+
+    try {
+        await controller.wait;
+        broadcastMessage( [conn1,conn2,conn3], "greetings!" );
+    }
+    catch (err) {
+        console.log("Connections abandoned!");
+    }
 }
 ```
 
-This code asserts that the three network socket connection objects (`conn1`, `conn2`, and `conn3`) all emit `"connected"` / `"reconnected"` and `"disconnected"` events, as well as have an `isConnected` boolean property that's `true` when connected or `false` when not. The moment all 3 connections are established simultaneously, the `await` expression will complete and then the `broadcastMessage(..)` operation will be performed.
+This code asserts that the three network socket connection objects (`conn1`, `conn2`, and `conn3`) all emit `"connected"` / `"reconnected"` and `"disconnected"` events, as well as have an `isConnected` boolean property that's `true` when connected or `false` when not. The moment all 3 connections are established simultaneously, the `await` expression waiting on the `wait` promise will complete, and then the `broadcastMessage(..)` operation will be performed.
+
+If the `"abandon"` event is fired on `conn1`, `controller.cancel()` is invoked, which cancels the event-state processing, cleans up all the listeners, and then rejects the `wait` promise.
 
 #### `EventEmitter`
 

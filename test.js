@@ -12,6 +12,7 @@ var delay = util.promisify(setTimeout);
 	try {
 		await test1();
 		await test2();
+		await test3();
 		console.log("all tests passed.");
 		process.exitCode = 0;
 	}
@@ -84,6 +85,69 @@ async function test2() {
 	];
 
 	var gate = RevocableQueue.eventState([
+		{ listener: emitters[0], onEvent: [ "yes", "yep", ], offEvent: "no", status: false, },
+		{ listener: emitters[1], onEvent: "yes", offEvent: [ "no", "nope", ], status: true, },
+		{ listener: emitters[2], onEvent: "yes", offEvent: "no", status: false, },
+	]).wait;
+
+	(async function emitting(){
+		await delay(50);
+		actual.push("one");
+		emitters[0].emit("yes");
+
+		await delay(50);
+		actual.push("two");
+		emitters[1].emit("nope");
+
+		await delay(50);
+		actual.push("three");
+		emitters[2].emit("yes");
+
+		await delay(50);
+		actual.push("four");
+		emitters[0].emit("no");
+		emitters[1].emit("yes");
+
+		await delay(50);
+		actual.push("five");
+		emitters[1].emit("no");
+		emitters[1].emit("yes");
+
+		await delay(50);
+		actual.push("six");
+		emitters[0].emit("yep");
+
+		await delay(50);
+		actual.push("nope");
+	})();
+
+	await Promise.race([
+		gate,
+		timeout(1000),
+	]);
+
+	if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+		throw new Error(`eventState() tests failed.\n  expected: ${expected}\n  actual: ${actual}`);
+	}
+}
+
+async function test3() {
+	var expected = ["one","two","three","seven","four","five","six",];
+	var actual = [];
+
+	var emitters = [
+		new RevocableQueue.EventEmitter(),
+		new RevocableQueue.EventEmitter(),
+		new RevocableQueue.EventEmitter(),
+	];
+
+	var { wait: gate1, cancel: cancel1, } = RevocableQueue.eventState([
+		{ listener: emitters[0], onEvent: "yes", offEvent: "no", status: false, },
+		{ listener: emitters[1], onEvent: "yes", offEvent: "no", status: true, },
+		{ listener: emitters[2], onEvent: "yes", offEvent: "no", status: false, },
+	]);
+
+	var { wait: gate2, cancel: cancel2, } = RevocableQueue.eventState([
 		{ listener: emitters[0], onEvent: "yes", offEvent: "no", status: false, },
 		{ listener: emitters[1], onEvent: "yes", offEvent: "no", status: true, },
 		{ listener: emitters[2], onEvent: "yes", offEvent: "no", status: false, },
@@ -101,6 +165,7 @@ async function test2() {
 		await delay(50);
 		actual.push("three");
 		emitters[2].emit("yes");
+		cancel1();
 
 		await delay(50);
 		actual.push("four");
@@ -115,14 +180,31 @@ async function test2() {
 		actual.push("six");
 		emitters[0].emit("yes");
 
+		await delay(0);
+		cancel2();	// note: should NOT cancel
+
 		await delay(50);
 		actual.push("nope");
 	})();
 
-	await Promise.race([
-		gate,
-		timeout(1000),
-	]);
+	try {
+		await Promise.race([
+			gate1,
+			timeout(1000),
+		]);
+	}
+	catch (err) {
+		actual.push("seven");
+	}
+	try {
+		await Promise.race([
+			gate2,
+			timeout(1000),
+		]);
+	}
+	catch (err) {
+		actual.push("oops");
+	}
 
 	if (JSON.stringify(expected) !== JSON.stringify(actual)) {
 		throw new Error(`eventState tests failed.\n  expected: ${expected}\n  actual: ${actual}`);

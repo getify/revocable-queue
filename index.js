@@ -96,8 +96,7 @@
 			};
 			queue.push(entry);
 
-			// microtask defer
-			Promise.resolve().then(notify);
+			notify();
 
 			return entry.use;
 		}
@@ -165,9 +164,26 @@
 		}
 	}
 
-	async function eventState(segments) {
-		// create a revocable queue to represent each gate segment
-		var queues = segments.map(function createQueue(segment){
+	function eventState(segments) {
+		// create revocable queues for each gate segment
+		var queues = segments.map(createQueue);
+		var cancel;
+
+		var wait = Promise.race([
+			// promise to wait for all events to be activated at the same time
+			lazyZip(...queues).next(),
+			new Promise(function c(res,rej){
+				cancel = rej;
+			}),
+		]);
+		wait.then(cleanup,cleanup);
+
+		return { wait, cancel, };
+
+
+		// *************************
+
+		function createQueue(segment){
 			var q = create();
 			var revoke;
 
@@ -208,28 +224,28 @@
 					revoke = q.add(true);
 				}
 			}
-		});
+		}
 
-		// wait for all events to be fired & active at the same time
-		await lazyZip(...queues).next();
-
-		// unsubscribe any listeners to avoid memory leaks
-		queues.forEach(function unsubscribe(q){
-			if (q.segment.onEvent) {
-				let evtNames = Array.isArray(q.segment.onEvent) ? q.segment.onEvent : [ q.segment.onEvent, ];
-				for (let evtName of evtNames) {
-					q.segment.listener.off(evtName,q.signal);
+		function cleanup() {
+			// unsubscribe any listeners to avoid memory leaks
+			queues.forEach(function unsubscribe(q){
+				if (q.segment.onEvent) {
+					let evtNames = Array.isArray(q.segment.onEvent) ? q.segment.onEvent : [ q.segment.onEvent, ];
+					for (let evtName of evtNames) {
+						q.segment.listener.off(evtName,q.signal);
+					}
 				}
-			}
-			if (q.segment.offEvent) {
-				let evtNames = Array.isArray(q.segment.offEvent) ? q.segment.offEvent : [ q.segment.offEvent, ];
-				for (let evtName of evtNames) {
-					q.segment.listener.off(evtName,q.wait);
+				if (q.segment.offEvent) {
+					let evtNames = Array.isArray(q.segment.offEvent) ? q.segment.offEvent : [ q.segment.offEvent, ];
+					for (let evtName of evtNames) {
+						q.segment.listener.off(evtName,q.wait);
+					}
 				}
-			}
-			q.wait = q.signal = q.segment = null;
-		});
-		segments.length = queues.length = 0;
+				q.wait = q.signal = q.segment = null;
+			});
+			cancel();
+			cancel = segments.length = queues.length = 0;
+		}
 	}
 
 });

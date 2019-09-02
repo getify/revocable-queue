@@ -236,28 +236,28 @@ For this kind of event/state synchronization use case, `eventState(..)` is provi
 
 **Note:** `eventState(..)` will typically be used with full event emitter instances (from streams, network sockets, etc). But if you need to create event emitters directly, see [`EventEmitter()`](#eventemitter) below.
 
-To use `eventState(..)`, pass it an array of two or more objects. Each object should have at a minimum a `listener` property with the event emitter instance, as well as an `onEvent` property with the name of the activation event to listen for.
+To use `eventState(..)`, pass it an array of two or more objects. Each object should have at a minimum a `listener` property with the event emitter instance, as well as an `onEvent` property with the name of the activation event to listen for (or an array of event names).
 
-Optionally, each of these objects can include an `offEvent` property to name a deactivation event to listen for, and a `status` property (boolean, default: `false`) to initialize the status for each listener:
+Optionally, each of these objects can include an `offEvent` property to name a deactivation event (or array of event names) to listen for, and a `status` property (boolean, default: `false`) to initialize the status for each listener:
 
 ```js
 async function greetings(conn1,conn2,conn3) {
     await RevocableQueue.eventState([
         {
             listener: conn1,
-            onEvent: "connected",
+            onEvent: [ "connected", "reconnected", ],
             offEvent: "disconnected",
             status: conn1.isConnected
         },
         {
             listener: conn2,
-            onEvent: "connected",
+            onEvent: [ "connected", "reconnected", ],
             offEvent: "disconnected",
             status: conn2.isConnected
         },
         {
             listener: conn3,
-            onEvent: "connected",
+            onEvent: [ "connected", "reconnected", ],
             offEvent: "disconnected",
             status: conn3.isConnected
         }
@@ -267,7 +267,7 @@ async function greetings(conn1,conn2,conn3) {
 }
 ```
 
-This code asserts that the three network socket connection objects (`conn1`, `conn2`, and `conn3`) all emit `"connected"` and `"disconnected"` events, as well as have an `isConnected` boolean property that's `true` when connected or `false` when not. The moment all 3 connections are established simultaneously, the `await` expression will complete and then the `broadcastMessage(..)` operation will be performed.
+This code asserts that the three network socket connection objects (`conn1`, `conn2`, and `conn3`) all emit `"connected"` / `"reconnected"` and `"disconnected"` events, as well as have an `isConnected` boolean property that's `true` when connected or `false` when not. The moment all 3 connections are established simultaneously, the `await` expression will complete and then the `broadcastMessage(..)` operation will be performed.
 
 #### `EventEmitter`
 

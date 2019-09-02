@@ -176,10 +176,16 @@
 			q.signal = signal;
 
 			if (segment.onEvent) {
-				segment.listener.on(segment.onEvent,signal);
+				let evtNames = Array.isArray(segment.onEvent) ? segment.onEvent : [ segment.onEvent, ];
+				for (let evtName of evtNames) {
+					segment.listener.on(evtName,signal);
+				}
 			}
 			if (segment.offEvent) {
-				segment.listener.on(segment.offEvent,wait);
+				let evtNames = Array.isArray(segment.offEvent) ? segment.offEvent : [ segment.offEvent, ];
+				for (let evtName of evtNames) {
+					segment.listener.on(evtName,wait);
+				}
 			}
 			if (segment.status) {
 				signal();
@@ -207,13 +213,19 @@
 		// wait for all events to be fired & active at the same time
 		await lazyZip(...queues).next();
 
-		// unsubscribe any listeners, avoid memory leaks
+		// unsubscribe any listeners to avoid memory leaks
 		queues.forEach(function unsubscribe(q){
 			if (q.segment.onEvent) {
-				q.segment.listener.off(q.segment.onEvent,q.signal);
+				let evtNames = Array.isArray(q.segment.onEvent) ? q.segment.onEvent : [ q.segment.onEvent, ];
+				for (let evtName of evtNames) {
+					q.segment.listener.off(evtName,q.signal);
+				}
 			}
 			if (q.segment.offEvent) {
-				q.segment.listener.off(q.segment.offEvent,q.wait);
+				let evtNames = Array.isArray(q.segment.offEvent) ? q.segment.offEvent : [ q.segment.offEvent, ];
+				for (let evtName of evtNames) {
+					q.segment.listener.off(evtName,q.wait);
+				}
 			}
 			q.wait = q.signal = q.segment = null;
 		});

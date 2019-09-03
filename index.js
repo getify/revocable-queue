@@ -178,7 +178,8 @@
 		]);
 		wait.then(cleanup,cleanup);
 
-		return { wait, cancel, };
+		var eventStateAPI = { wait, cancel, };
+		return eventStateAPI;
 
 
 		// *************************
@@ -243,8 +244,8 @@
 				}
 				q.wait = q.signal = q.segment = null;
 			});
-			cancel();
-			cancel = segments.length = queues.length = 0;
+			segments.length = queues.length = 0;
+			eventStateAPI = eventStateAPI.wait = eventStateAPI.cancel = wait = cancel = null;
 		}
 	}
 

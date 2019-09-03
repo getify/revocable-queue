@@ -245,7 +245,7 @@
 				q.wait = q.signal = q.segment = null;
 			});
 			segments.length = queues.length = 0;
-			eventStateAPI = eventStateAPI.wait = eventStateAPI.cancel = wait = cancel = null;
+			eventStateAPI = wait = cancel = null;
 		}
 	}
 

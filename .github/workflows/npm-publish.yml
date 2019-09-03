@@ -2,7 +2,6 @@ name: Publish to npm
 on: registry_package
 jobs:
   publish-npm:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1

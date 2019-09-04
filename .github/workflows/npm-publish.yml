@@ -9,6 +9,7 @@ jobs:
         with:
           node-version: 12
           registry-url: https://registry.npmjs.org/
+          scope: getify
       - run: npm install && npm publish
         env:
           NODE_AUTH_TOKEN: ${{secrets.npm_token}}

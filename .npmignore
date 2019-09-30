@@ -1,6 +1,8 @@
 .npmrc
 .npmignore
 .gitignore
+.coveralls.yml
+.travis.yml
 .github/
 node_modules/
 dist/

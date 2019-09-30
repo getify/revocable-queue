@@ -10,7 +10,7 @@
 			this.listeners = {};
 		}
 		emit(evtName,...args) {
-			for (let handler of (this.listeners[evtName] || [])) {
+			for (let handler of (/* istanbul ignore next */this.listeners[evtName] || [])) {
 				try { handler.apply(this,args); }
 				catch (err) {}
 			}
@@ -21,6 +21,7 @@
 			this.listeners[evtName].add(handler);
 			return this;
 		}
+		/* istanbul ignore next */
 		once(evtName,handler) {
 			var onEvt = (...args) => {
 				this.off(evtName,handler);
@@ -29,11 +30,13 @@
 			return this.on(evtName,onEvt);
 		}
 		removeListener(evtName,handler) {
+			/* istanbul ignore else */
 			if (this.listeners[evtName]) {
 				this.listeners[evtName].delete(handler);
 			}
 			return this;
 		}
+		/* istanbul ignore next */
 		removeAllListeners(evtName) {
 			var evtNames = (evtName !== undefined) ? [evtName,] : Object.keys(this.listeners);
 			for (let name of evtNames) {
@@ -45,11 +48,25 @@
 		}
 	}
 
+	class IteratorClosed extends Error {
+		constructor() {
+			super("Iterator is closed");
+		}
+	}
+
+	class QueueClosed extends Error {
+		constructor() {
+			super("Queue is closed");
+		}
+	}
 
 	var moduleAPI = {
 		create,
 		lazyZip,
+		lazyMerge,
 		eventState,
+		queueIterable,
+		eventIterable,
 		EventEmitter,
 	};
 	Object.defineProperty(moduleAPI,"EMPTY",{ value: {}, writable: false, configurable: false, enumerable: false, });
@@ -60,6 +77,7 @@
 	// ******************************
 
 	function create() {
+		var closed = false;
 		var queue = [];
 		var signals = [];
 
@@ -67,6 +85,8 @@
 			add,
 			insertFirst,
 			next,
+			close,
+			isClosed,
 		};
 
 		return queueAPI;
@@ -75,30 +95,40 @@
 		// ******************************
 
 		function next() {
-			return new Promise(function c(res){
-				signals.push(res);
-				notify();
-			});
+			if (!closed) {
+				return new Promise(function c(res,rej){
+					signals.push([ res, rej, ]);
+					notify();
+				});
+			}
+			else {
+				return Promise.reject(new QueueClosed());
+			}
 		}
 
 		function add(v) {
-			var entry = {
-				use(take = true) {
-					// entry still pending?
-					if (entry.use) {
-						if (take) {
-							entry.use = null;
+			if (!closed) {
+				var entry = {
+					use(take = true) {
+						// entry still pending?
+						if (!closed && entry.use) {
+							if (take) {
+								entry.use = null;
+							}
+							return v;
 						}
-						return v;
-					}
-					return moduleAPI.EMPTY;
-				},
-			};
-			queue.push(entry);
+						return moduleAPI.EMPTY;
+					},
+				};
+				queue.push(entry);
 
-			notify();
+				notify();
 
-			return entry.use;
+				return entry.use;
+			}
+			else {
+				throw new QueueClosed();
+			}
 		}
 
 		function insertFirst(v) {
@@ -110,57 +140,163 @@
 			return use;
 		}
 
+		function close() {
+			if (!closed) {
+				closed = true;
+
+				// pending queue signals that should be forcibly rejected?
+				if (queue.length < signals.length) {
+					for (let [,rej,] of signals) {
+						rej(new QueueClosed());
+					}
+				}
+				queue.length = signals.length = 0;
+			}
+		}
+
+		function isClosed() {
+			return closed;
+		}
+
 		function notify() {
 			while (queue.length > 0 && signals.length > 0) {
 				let entry = queue.shift();
 				// entry still pending?
 				if (entry.use) {
-					signals.shift()(entry.use);
+					signals.shift()[0](entry.use);
 				}
 			}
 		}
 	}
 
-	async function *lazyZip(...queues) {
-		var accessors = [];
+	function lazyZip(...queues) {
+		return makeCloseableAsyncIterable(async function *lazyZip(iteratorHasClosed){
+			var accessors = [];
 
-		while (true) {
-			// wait on either previously un-used accessors or new
-			// accessors from the queues
-			let waiters = [];
-			for (let [idx,queue,] of queues.entries()) {
-				waiters[idx] = accessors[idx] || queue.next();
+			while (true) {
+				// wait on either previously un-used accessors or new
+				// accessors from the queues
+				let waiters = [];
+				for (let [idx,queue,] of queues.entries()) {
+					waiters[idx] = accessors[idx] || queue.next();
+				}
+
+				try {
+					// wait for all accessors to resolve
+					accessors = await Promise.race([
+						iteratorHasClosed,
+						Promise.all(waiters),
+					]);
+				}
+				catch (err) {
+					/* istanbul ignore else */
+					if (
+						err instanceof QueueClosed ||
+						err instanceof IteratorClosed
+					) {
+						return;
+					}
+					else {
+						throw err;
+					}
+				}
+
+				// peek at accessor results
+				let results = [];
+				for (let [idx,accessor,] of accessors.entries()) {
+					results[idx] = accessor(/*take=*/false);
+				}
+
+				// all results available?
+				if (!results.includes(moduleAPI.EMPTY)) {
+					// mark all accessors as used
+					for (let accessor of accessors) {
+						accessor(/*take=*/true);
+					}
+
+					// send this set of results
+					yield results;
+
+					// force discarding of accessors
+					results.fill(moduleAPI.EMPTY);
+				}
+
+				// discard any used accessors (for next iteration)
+				for (let [idx,val,] of results.entries()) {
+					if (val === moduleAPI.EMPTY) {
+						accessors[idx] = null;
+					}
+				}
 			}
+		});
+	}
 
-			// wait for all accessors to resolve
-			accessors = await Promise.all(waiters);
+	function lazyMerge(...queues) {
+		return makeCloseableAsyncIterable(async function *lazyMerge(iteratorHasClosed){
+			// pull promises from each queue
+			var waiters = queues.map(waitForNextAccessor);
 
-			// peek at accessor results
-			let results = [];
-			for (let [idx,accessor,] of accessors.entries()) {
-				results[idx] = accessor(/*take=*/false);
-			}
+			while (true) {
+				let accessorIdx, accessor;
 
-			// all results available?
-			if (!results.includes(moduleAPI.EMPTY)) {
-				// mark all accessors as used
-				for (let accessor of accessors) {
+				// wait for an accessor to become available
+				try {
+					[ accessorIdx, accessor, ] = await Promise.race([ iteratorHasClosed, ...waiters, ]);
+				}
+				catch (err) {
+					if (err instanceof IteratorClosed) {
+						return;
+					}
+					else {
+						/* istanbul ignore else */
+						if (err instanceof QueueClosed) {
+							let allClosed = true;
+
+							// find which queue(s) are now closed
+							for (let [idx,q,] of queues.entries()) {
+								if (q.isClosed()) {
+									// replace with a dead promise
+									waiters[idx] = waitForNextAccessor(queues[idx],idx);
+								}
+								else {
+									allClosed = false;
+								}
+							}
+
+							if (allClosed) {
+								return;
+							}
+
+							continue;
+						}
+						else {
+							throw err;
+						}
+					}
+				}
+
+				// does winning accessor have a result available?
+				let result = accessor(/*take=*/false);
+				/* istanbul ignore else */
+				if (result !== moduleAPI.EMPTY) {
 					accessor(/*take=*/true);
+					yield result;
 				}
 
-				// send this set of results
-				yield results;
-
-				// force discarding of accessors
-				results.fill(moduleAPI.EMPTY);
+				// replace the winning accessor with a new waiter
+				waiters[accessorIdx] = waitForNextAccessor(queues[accessorIdx],accessorIdx);
 			}
+		});
+	}
 
-			// discard any used accessors (for next iteration)
-			for (let [idx,val,] of results.entries()) {
-				if (val === moduleAPI.EMPTY) {
-					accessors[idx] = null;
-				}
-			}
+	function waitForNextAccessor(q,idx) {
+		if (!q.isClosed()) {
+			return q.next().then(function t(accessor){
+				return [ idx, accessor, ];
+			});
+		}
+		else {
+			return new Promise(Function.prototype);
 		}
 	}
 
@@ -192,12 +328,14 @@
 			q.wait = wait;
 			q.signal = signal;
 
+			/* istanbul ignore else */
 			if (segment.onEvent) {
 				let evtNames = Array.isArray(segment.onEvent) ? segment.onEvent : [ segment.onEvent, ];
 				for (let evtName of evtNames) {
 					segment.listener.on(evtName,signal);
 				}
 			}
+			/* istanbul ignore else */
 			if (segment.offEvent) {
 				let evtNames = Array.isArray(segment.offEvent) ? segment.offEvent : [ segment.offEvent, ];
 				for (let evtName of evtNames) {
@@ -214,6 +352,7 @@
 			// **********************
 
 			function wait() {
+				/* istanbul ignore else */
 				if (revoke) {
 					revoke();
 					revoke = null;
@@ -230,12 +369,14 @@
 		function cleanup() {
 			// unsubscribe any listeners to avoid memory leaks
 			queues.forEach(function unsubscribe(q){
+				/* istanbul ignore else */
 				if (q.segment.onEvent) {
 					let evtNames = Array.isArray(q.segment.onEvent) ? q.segment.onEvent : [ q.segment.onEvent, ];
 					for (let evtName of evtNames) {
 						q.segment.listener.off(evtName,q.signal);
 					}
 				}
+				/* istanbul ignore else */
 				if (q.segment.offEvent) {
 					let evtNames = Array.isArray(q.segment.offEvent) ? q.segment.offEvent : [ q.segment.offEvent, ];
 					for (let evtName of evtNames) {
@@ -247,6 +388,69 @@
 			segments.length = queues.length = 0;
 			eventStateAPI = wait = cancel = null;
 		}
+	}
+
+	function queueIterable(q) {
+		return lazyMerge(q);
+	}
+
+	function eventIterable(listener,eventName) {
+		return makeCloseableAsyncIterable(async function *eventIterable(iteratorHasClosed){
+			try {
+				var q = create();
+				listener.on(eventName,q.add);
+
+				// NOTE: instead of `yield*` here, we're manually consuming
+				// the iterator and forwarding each result, so that we can
+				// properly be notified of an external return() closing
+				let it = queueIterable(q);
+				while (true) {
+					let value;
+					try {
+						({ value, } = await Promise.race([ iteratorHasClosed, it.next(), ]));
+					}
+					catch (err) {
+						/* istanbul ignore else */
+						if (err instanceof IteratorClosed) {
+							return;
+						}
+						else {
+							throw err;
+						}
+					}
+
+					yield value;
+				}
+			}
+			finally {
+				listener.off(eventName,q.add);
+			}
+		});
+	}
+
+	function makeCloseableAsyncIterable(asyncGen) {
+		var triggerClosed;
+		var closed = new Promise(function c(res,rej){
+			triggerClosed = rej;
+		});
+		var genIt = asyncGen(closed);
+
+		return {
+			__proto__: Object.getPrototypeOf(genIt),
+			[Symbol.toStringTag]: genIt[Symbol.toStringTag],
+			[Symbol.asyncIterator]() { return this; },
+			next(...args) { return genIt.next(...args); },
+			/* istanbul ignore next */
+			throw(...args) { return genIt.throw(...args); },
+			return(...args) {
+				try {
+					return genIt.return(...args);
+				}
+				finally {
+					triggerClosed(new IteratorClosed());
+				}
+			},
+		};
 	}
 
 });

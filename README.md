@@ -1,12 +1,14 @@
 # Revocable Queue
 
+[![Build Status](https://travis-ci.org/getify/revocable-queue.svg?branch=master)](https://travis-ci.org/getify/revocable-queue)
 [![npm Module](https://badge.fury.io/js/%40getify%2Frevocable-queue.svg)](https://www.npmjs.org/package/@getify/revocable-queue)
 [![Dependencies](https://david-dm.org/getify/revocable-queue.svg)](https://david-dm.org/getify/revocable-queue)
 [![devDependencies](https://david-dm.org/getify/revocable-queue/dev-status.svg)](https://david-dm.org/getify/revocable-queue?type=dev)
+[![Coverage Status](https://coveralls.io/repos/github/getify/revocable-queue/badge.svg?branch=master)](https://coveralls.io/github/getify/revocable-queue?branch=master)
 
 **Revocable Queue** allows you to read/write a sequence of data values (aka, a queue) asynchronously, similar to streams or observables. But any data/event that is still pending in the queue -- hasn't yet been read -- can be revoked.
 
-Some helpers are included to make working with revocable queues easier for some common use-cases, including [`lazyZip(..)`](#lazyzip) and [`eventState(..)`](#eventstate).
+Several helpers are also included to make working with revocable queues easier, using the ES2018 asynchronous iteration protocol, including: [`lazyZip(..)`](#lazyzip), [`lazyMerge(..)`](#lazymerge), [`queueIterable(..)`](#iterating-a-single-queue), and [`eventIterable(..)`](#eventiterable). In addition, [`eventState(..)`](#eventstate) helps with managing the asynchronous toggling of event states.
 
 ## API
 
@@ -52,6 +54,12 @@ console.log(`This random number (${peek}) is still in the queue.`);
 ```
 
 **Note:** This `revoke(..)` function is the same function returned when actually reading a value from the queue (with `next()`). The "peek" usage just described is generally more useful in that scenario; more on [that below](#peeking).
+
+The `add(..)` utility adds a value to the end of the queue. If you need to override the order of the queue and ensure an inserted value will be consumed next from the queue, use `insertFirst(..)`. This utility works identically to `add(..)` except for where in the queue it ends up:
+
+```js
+var revoke = q.insertFirst( Math.random() );
+```
 
 ### Reading / Taking
 
@@ -100,8 +108,8 @@ if (
     get1(/*take=*/false) !== RevocableQueue.EMPTY &&
     get2(/*take=*/false) !== RevocableQueue.EMPTY
 ) {
-    let val1 = get1();
-    let val2 = get2();
+    let val1 = get1(/*take=*/true);
+    let val2 = get2(/* defaults to true */);
 
     console.log(`The values retrieved: ${val1} ${val2}`);
 }
@@ -109,9 +117,47 @@ if (
 
 In this above snippet, the not-so-obvious race condition is that `get1` may have been resolved signficantly before (or after) `get2`, so by that time, either underlying value may have been revoked. The `if` statment peeks through each queue's ready-to-read accessor function to ensure the value is indeed *still* ready.
 
-**Note:** There is no race condition between the `get1(false)` and the `get1()` call (or the `get2(..)` calls), because JavaScript is single-threaded. So as long as this code pattern is followed, where the peeking and the reading happen synchronously (no promise/`await` deferral in between!), it's perfectly safe to assume that the peeked value is still ready to read in the next statement. Even if some other code was trying to revoke that value at that exact moment, it would be waiting for this code to finish, and since it's fully read/taken, the revoking would fail.
+**Note:** There is no race condition between the `get1(false)` and the `get1(true)` call (or the two `get2(..)` calls), because JavaScript is single-threaded. So as long as this code pattern is followed, where the peeking and the reading happen synchronously (no promise/`await` deferral in between!), it's perfectly safe to assume that the peeked value is still ready to read in the next statement. Even if some other code was trying to revoke that value at that exact moment, it would be waiting for this code to finish, and since it's fully read/taken by then, the revoking would fail.
 
-This synchronizing of lazy asynchronous reads from multiple queues is an expected common use-case for **RevocableQueue**. As such, the [`lazyZip(..)`](#lazyzip) helper utility is also provided.
+Synchronizing of lazy async reads from multiple queues is an expected common use-case for **Revocable Queue**; the [`lazyZip(..)`](#lazyzip) helper utility is thus provided.
+
+### Closing a Queue
+
+A queue can be closed at any point, which implicitly revokes and discards any unconsumed values in the queue at that point. After a queue is closed, any retained references to accessors from the queue will thereafter immediately return the `RevocableQueue.EMPTY` value.
+
+A queue has an `isClosed()` method to check if it has been closed or not. Once a queue has been closed, avoid calling `add(..)` / `insertFirst(..)` (throws an exception) or `next()` (returns a rejected promise with an exception).
+
+```js
+async function main() {
+    var q = RevocableQueue.create();
+
+    q.add( 1 );
+    q.add( 2 );
+    q.add( 3 );
+    q.add( 4 );
+    var accessor = await q.next();
+    accessor(/*take=*/true);     // 1
+
+    accessor = await q.next();
+    accessor(/*take=*/false);    // 2
+
+    q.close();
+    q.isClosed();                // true
+    accessor(/*take=*/true);     // RevocableQueue.EMPTY
+    try {
+        q.add( 5 );
+    }
+    catch (err) {
+        err.toString();          // Error: Queue is closed
+    }
+    try {
+        v = await q.next();
+    }
+    catch (err) {
+        err.toString();          // Error: Queue is closed
+    }
+}
+```
 
 ### Example
 
@@ -161,17 +207,23 @@ clearButton.addEventListener("click",function clearQueue(){
 
 The `readValues(..)` asynchronous looping is only reading one value per 500ms, but the `setInterval(..)` loop is adding a new value every 100ms. As such, the queue is going to grow by \~8 values per second. The button click handler clears out the queue by calling all the collected `revoke()` functions.
 
-`readValues(..)` shows how to manually consume the queue, which in some cases may be the preferred approach. But it also may be preferred to have a more standard consumption pattern, such as ES2018 async iterators. This is [illustrated later](#iterating-a-single-queue).
+`readValues(..)` shows how to manually consume a queue, which in some cases may be necessary. But it's generally recommended to use the ES2018 asynchronous iteration pattern, which is [illustrated later](#iterating-a-single-queue).
 
-### `lazyZip(..)`
+### Iterating Queues
+
+Asynchronous iteration (ES2018) is a language-standard pattern for consuming an async stream of values. **Revocable Queue** provides helpers for consuming queues as async iterators, commonly with a `for await..` loop.
+
+#### `lazyZip(..)`
 
 In the [Peeking](#peeking) section above, the use case was presented to synchronize lazy asynchronous reads from multiple queues. For example, imagine a queue that collects customers who attempt to connect to a support chat, and another queue that collects support agents who become available for a chat.
 
 You would want to read a value from each queue, whenever one was ready, but ensure that you have an *atomic pairing*, meaning that you only take a value from each queue when both queues have a value available. If a customer starts waiting, and later an agent becomes available, you pair them. But if the customer disconnects while waiting for an agent, they need to be removed (revoked) from the queue. The reverse scenario also applies: an agent could disconnect while waiting for a customer to connect.
 
-In FP (functional programming) terms, as well as in streams based programming like with observables, this *atomic pairing* is generally a `zip(..)` operation. But traditional FP `zip(..)` utilities don't account for reading from queues which are asynchronous, and observables' `zip(..)` doesn't really account for revocation.
+In FP (functional programming) terms, as well as in reactive/streams based programming like with observables, this *atomic pairing* is most closely modeled as a `zip(..)` operation. But traditional FP `zip(..)` utilities don't account for reading from queues which are asynchronous, and observables' `zip(..)` doesn't really account for revocation. Neither is *exactly* the model we need.
 
-As such, this library provides a `lazyZip(..)` helper utility. It is an asynchronous generator (ES2018), aka a JS "stream". Here's how it can be used:
+Since **Revocable Queue** queues hold values that can be revoked, this `lazyZip(..)` helper utility has the nuanced but important difference from other "zip"s that it doesn't actually consume a value from a queue until all queues have a value available to consume. Any queue that's being iterated with `lazyZip(..)` can have a previous value revoked if it hasn't yet actually been consumed by `lazyZip(..)`. Also, that [queue may be closed](#closing-a-queue), which implicity revokes/discards any unconsumed values.
+
+Here's how to use `lazyZip(..)`:
 
 ```js
 var agents = RevocableQueue.create();
@@ -186,13 +238,43 @@ async function supporChatSessions() {
 }
 ```
 
-Since `lazyZip(..)` is an ES2018 async generator, when called it returns an ES2018 async iterator instance (suitable for use with `for await..` loops, etc). This makes consumption of the resulting stream (aka "queue") of value pairings very straightforward.
+`lazyZip(..)` returns an ES2018 async iterator instance (suitable for use with `for await..` loops, etc). This makes consumption of the resulting stream (aka "queue") of value collections straightforward.
+
+As is common for a "zip" operation, the iterator from `lazyZip(..)` will be closed if **any of the queues** are [closed](#closing-a-queue) (which would terminate the `for await..` loop). Also, the iterator will be closed if you early-exit a `for await..` loop (uncaught exception, `break`, `return`, etc), or if you directly call `return()` on an iterator instance.
+
+**Note:** Closing an iterator does not close any of its observed queues, but closing **any** such queue will close the iterator.
+
+#### `lazyMerge(..)`
+
+You may want to consume the next available value from any of multiple queues, which in reactive programming speak is a "merge". `lazyMerge(..)` returns an ES2018 async iterator instance to make this consumption straightforward:
+
+```js
+var clicks = RevocableQueue.create();
+var keypresses = RevocableQueue.create();
+
+async function moveGameCharacter() {
+    for await (
+        let evt of RevocableQueue.lazyMerge(clicks,keypresses)
+    ) {
+        if (evt.type == "click") {
+            // ..
+        }
+        else if (evt.type == "keypress") {
+            // ..
+        }
+    }
+}
+```
+
+As is common for a "merge" operation, the iterator from `lazyMerge(..)` will be closed if **all queues** are [closed](#closing-a-queue) (which would terminate the `for await..` loop). Also, the iterator will be closed if you early-exit a `for await..` loop (uncaught exception, `break`, `return`, etc), or if you directly call `return()` on an iterator instance.
+
+**Note:** Closing an iterator does not close any of its observed queues, but closing **all** such queues will close the iterator.
 
 #### Iterating a Single Queue
 
-`lazyZip(..)` is primarily intended to zip values from two or more revocable queues, as shown above. However, you can pass it a single revocable queue, and what you get back is a convenient ES2018 async iterator to consume that single queue asynchronously in a convenient and JS-standard form.
+`lazyZip(..)` and `lazyMerge(..)` are primarily intended to zip/merge values from two or more revocable queues. However, you can pass either utility a single revocable queue, and what you get back is an async iterator to consume that single queue asynchronously in a language-standard, convenient form.
 
-To compare, recall this example from above:
+To illustrate, recall this manual iteration example from above:
 
 ```js
 // read a value from the queue every 500ms
@@ -210,12 +292,12 @@ To compare, recall this example from above:
 })();
 ```
 
-Here's how to consume that queue using `lazyZip(..)`:
+Here's how to consume that queue using `lazyMerge(..)`:
 
 ```js
 // read a value from the queue every 500ms
 (async function readValues(){
-    for await (let val of RevocableQueue.lazyZip(q)) {
+    for await (let val of RevocableQueue.lazyMerge(q)) {
         console.log(`Read value: ${val}`);
 
         // `delay(..)` is a promisified `setTimeout(..)`
@@ -224,7 +306,41 @@ Here's how to consume that queue using `lazyZip(..)`:
 })();
 ```
 
-That approach is probably much cleaner in most cases!
+**Note:** `lazyZip(..)` can also be used for this purpose, but it always yields an array, even with a single value. So, the `for await..` statement above would be: `for await (let [val] of RevocableQueue.lazyZip(q))`, with the `[val]` array destructuring.
+
+The semantic of using `lazyMerge(..)` / `lazyZip(..)` here with a single queue may be a bit confusing to readers of your code. So it's recommended to use the `queueIterable(..)` helper, which is solely provided as a better semantic name for this use-case (it just invokes `lazyMerge(..)` with a single passed in queue):
+
+```js
+// read a value from the queue every 500ms
+(async function readValues(){
+    for await (let val of RevocableQueue.queueIterable(q)) {
+        console.log(`Read value: ${val}`);
+
+        // `delay(..)` is a promisified `setTimeout(..)`
+        await delay(500);
+    }
+})();
+```
+
+This form of queue iteration with `queueIterable(..)` is much nicer than doing it manually!
+
+### `eventIterable(..)`
+
+A common pattern is to turn a stream of events into an async iterable for consumption. You could do this manually by creating a queue, subscribing the event to push event objects into the queue, then turning the queue into an iterable with `queueIterable(..)`. But that's a fair amount of boilerplate.
+
+For this purpose, the `eventIterable(..)` helper is provided:
+
+```js
+var btn = ..;
+
+(async function logButtonClicks(){
+    for await (let evt of RevocableQueue.eventIterable(btn,"click")) {
+        console.log(`Clicked on: ${evt.target}`);
+    }
+})();
+```
+
+This loop will continue perpetually because nothing will close the iterator or the underlying queue from the event subscription. However, if the iterator is closed, the event is unsubscribed during cleanup.
 
 ### `eventState(..)`
 
@@ -312,6 +428,7 @@ listener.emit("greeting","Kyle");
 
 ## Builds
 
+[![Build Status](https://travis-ci.org/getify/revocable-queue.svg?branch=master)](https://travis-ci.org/getify/revocable-queue)
 [![npm Module](https://badge.fury.io/js/%40getify%2Frevocable-queue.svg)](https://www.npmjs.org/package/@getify/revocable-queue)
 
 The distribution library file (`dist/rq.js`) comes pre-built with the npm package distribution, so you shouldn't need to rebuild it under normal circumstances.
@@ -361,6 +478,20 @@ A test suite is included in this repository, as well as the npm package distribu
     ```
     node node-tests.js
     ```
+
+### Test Coverage
+
+[![Coverage Status](https://coveralls.io/repos/github/getify/revocable-queue/badge.svg?branch=master)](https://coveralls.io/github/getify/revocable-queue?branch=master)
+
+If you have [NYC (Istanbul)](https://github.com/istanbuljs/nyc) already installed on your system (requires v14.1+), you can use it to check the test coverage:
+
+```
+npm run coverage
+```
+
+Then open up `coverage/lcov-report/index.html` in a browser to view the report.
+
+**Note:** The npm script `coverage:report` is only intended for use by project maintainers. It sends coverage reports to [Coveralls](https://coveralls.io/).
 
 ## License
 

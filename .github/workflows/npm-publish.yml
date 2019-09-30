@@ -10,7 +10,7 @@ jobs:
           node-version: 12
           registry-url: https://registry.npmjs.org/
           scope: getify
-      - run: "echo \"repo_token: ${{secrets.coveralls_token}}\" > .coveralls.yml"
-      - run: npm install && npm publish --userconfig='/home/runner/work/_temp/.npmrc'
+      - run: npm install && npm publish --@getify:registry=https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+          COVERALLS_REPO_TOKEN: ${{secrets.coveralls_token}}

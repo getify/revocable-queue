@@ -5,4 +5,5 @@
 .travis.yml
 .github/
 node_modules/
+coverage/
 dist/

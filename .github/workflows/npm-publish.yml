@@ -13,4 +13,5 @@ jobs:
       - run: npm install && npm publish --@getify:registry=https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+          COVERALLS_SERVICE_NAME: github-actions
           COVERALLS_REPO_TOKEN: ${{secrets.coveralls_token}}

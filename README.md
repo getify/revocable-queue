@@ -115,7 +115,7 @@ if (
 }
 ```
 
-In this above snippet, the not-so-obvious race condition is that `get1` may have been resolved signficantly before (or after) `get2`, so by that time, either underlying value may have been revoked. The `if` statment peeks through each queue's ready-to-read accessor function to ensure the value is indeed *still* ready.
+In this above snippet, the not-so-obvious race condition is that `get1` may have been resolved signficantly before (or after) `get2`, so by that time, either underlying value may have been revoked. The `if` statement peeks through each queue's ready-to-read accessor function to ensure the value is indeed *still* ready.
 
 **Note:** There is no race condition between the `get1(false)` and the `get1(true)` call (or the two `get2(..)` calls), because JavaScript is single-threaded. So as long as this code pattern is followed, where the peeking and the reading happen synchronously (no promise/`await` deferral in between!), it's perfectly safe to assume that the peeked value is still ready to read in the next statement. Even if some other code was trying to revoke that value at that exact moment, it would be waiting for this code to finish, and since it's fully read/taken by then, the revoking would fail.
 
@@ -344,7 +344,7 @@ This loop will continue perpetually because nothing will close the iterator or t
 
 ### `eventState(..)`
 
-Another use-case for revocable queues and `lazyZip(..)` is listening for alternating events to fire that represent a toggling of a state (between `true` and `false`). The concern is not receiving specific values from these events (as illustrated previously with `lazyZip(..)`), but rather just listening for a signal that all of the activation events for a set of two or more listeners has fired, and that no corresponding deactivation events occured while waiting.
+Another use-case for revocable queues and `lazyZip(..)` is listening for alternating events to fire that represent a toggling of a state (between `true` and `false`). The concern is not receiving specific values from these events (as illustrated previously with `lazyZip(..)`), but rather just listening for a signal that all of the activation events for a set of two or more listeners has fired, and that no corresponding deactivation events occurred while waiting.
 
 For example: managing a series of network socket connections which fire `"connected"` and `"disconnected"` events, and synchronizing operations to occur only when all the connections are active/connected at the same time.
 

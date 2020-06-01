@@ -3,6 +3,7 @@
 	/* istanbul ignore next */else if (typeof module !== "undefined" && module.exports) { module.exports = definition(); }
 	/* istanbul ignore next */else { context[name] = definition(); }
 })("RevocableQueue",this,function DEF(){
+	"use strict";
 
 	// a basic event-emitter, if you don't already have one
 	class EventEmitter {

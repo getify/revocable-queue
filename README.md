@@ -2,9 +2,9 @@
 
 [![Build Status](https://travis-ci.org/getify/revocable-queue.svg?branch=master)](https://travis-ci.org/getify/revocable-queue)
 [![npm Module](https://badge.fury.io/js/%40getify%2Frevocable-queue.svg)](https://www.npmjs.org/package/@getify/revocable-queue)
-[![Dependencies](https://david-dm.org/getify/revocable-queue.svg)](https://david-dm.org/getify/revocable-queue)
-[![devDependencies](https://david-dm.org/getify/revocable-queue/dev-status.svg)](https://david-dm.org/getify/revocable-queue?type=dev)
 [![Coverage Status](https://coveralls.io/repos/github/getify/revocable-queue/badge.svg?branch=master)](https://coveralls.io/github/getify/revocable-queue?branch=master)
+[![Modules](https://img.shields.io/badge/modules-UMD%2BCJS-a1356a)](https://nodejs.org/api/packages.html#dual-commonjses-module-packages)
+[![License](https://img.shields.io/badge/license-MIT-a1356a)](LICENSE.txt)
 
 **Revocable Queue** allows you to read/write a sequence of data values (aka, a queue) asynchronously, similar to streams or observables. But any data/event that is still pending in the queue -- hasn't yet been read -- can be revoked.
 
@@ -430,6 +430,7 @@ listener.emit("greeting","Kyle");
 
 [![Build Status](https://travis-ci.org/getify/revocable-queue.svg?branch=master)](https://travis-ci.org/getify/revocable-queue)
 [![npm Module](https://badge.fury.io/js/%40getify%2Frevocable-queue.svg)](https://www.npmjs.org/package/@getify/revocable-queue)
+[![Modules](https://img.shields.io/badge/modules-UMD%2BCJS-a1356a)](https://nodejs.org/api/packages.html#dual-commonjses-module-packages)
 
 The distribution library file (`dist/rq.js`) comes pre-built with the npm package distribution, so you shouldn't need to rebuild it under normal circumstances.
 
@@ -494,5 +495,7 @@ Then open up `coverage/lcov-report/index.html` in a browser to view the report.
 **Note:** The npm script `coverage:report` is only intended for use by project maintainers. It sends coverage reports to [Coveralls](https://coveralls.io/).
 
 ## License
+
+[![License](https://img.shields.io/badge/license-MIT-a1356a)](LICENSE.txt)
 
 All code and documentation are (c) 2019 Kyle Simpson and released under the [MIT License](http://getify.mit-license.org/). A copy of the MIT License [is also included](LICENSE.txt).

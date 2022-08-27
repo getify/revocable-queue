@@ -1,7 +1,7 @@
 {
 	"name": "@getify/revocable-queue",
 	"description": "Specialized async queue data structure",
-	"version": "4.0.7",
+	"version": "4.0.8",
 	"main": "dist/rq.js",
 	"scripts": {
 		"test": "node node-tests.js",
@@ -17,7 +17,7 @@
 		"publish": "npm run coverage:report"
 	},
 	"devDependencies": {
-		"terser": "~4.3.4"
+		"terser": "~5.15.0"
 	},
 	"repository": "getify/revocable-queue",
 	"keywords": [

@@ -1,7 +1,7 @@
 {
 	"name": "@getify/revocable-queue",
 	"description": "Specialized async queue data structure",
-	"version": "4.0.8",
+	"version": "4.0.9",
 	"main": "dist/rq.js",
 	"scripts": {
 		"test": "node node-tests.js",
@@ -17,7 +17,8 @@
 		"publish": "npm run coverage:report"
 	},
 	"devDependencies": {
-		"terser": "~5.15.0"
+		"coveralls": "~3.1.1",
+		"terser": "~5.17.1"
 	},
 	"repository": "getify/revocable-queue",
 	"keywords": [
@@ -29,8 +30,5 @@
 	},
 	"homepage": "https://github.com/getify/revocable-queue",
 	"author": "Kyle Simpson <getify@gmail.com>",
-	"license": "MIT",
-	"dependencies": {
-		"coveralls": "^3.0.6"
-	}
+	"license": "MIT"
 }
